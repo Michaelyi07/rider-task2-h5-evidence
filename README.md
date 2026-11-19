@@ -1,18 +1,29 @@
 # ClawHunt 投标 Task 2/5 — 候选人端 H5（可运行仓库）
 
-> **Bid evidence snapshot.** This repository contains the reproducible verification evidence (test suite, measured outputs, interface contract and startup notes) for this task. The full runnable implementation is delivered to the awarding party after the bid is won. All data shown is synthetic.
-
-
-
 > 单号 1807 · 报价 $600 · 硬验收 AC0–AC7。
 > 本仓库是可运行代码 + 真实验证证据，不是文档/PPT 方案。
 > 全部数据为**合成数据**，不含真实姓名、手机号、站点或联系方式。
 
 ## 1. 环境与启动
 
-本机基线：Node **v22.22.2**、npm **10.9.7**、**无 Docker**。
+本机基线：Node **v22.22.2**、npm **10.9.7**（本机无 Docker，compose 文件已写就绪，见下）。
 技术栈：React 18 + TypeScript + Vite 6 + Vitest 3 + @testing-library/react + Playwright 1.63 + 原生 Node mock（8787）。
 依赖许可：React / Vite / Vitest / Playwright / @testing-library / concurrently 均为 MIT；无 GPL/AGPL。
+
+### 方式 A：Docker Compose 一键启动（交付默认方式）
+
+```bash
+docker compose up --build
+# H5:   http://127.0.0.1:5173/?source_channel=poster_cityA （nginx 静态服务 Vite 构建产物）
+# Mock: http://127.0.0.1:8787/health                      （Node 原生契约 mock）
+```
+
+- `Dockerfile` 为单文件双 target：`build`（npm ci + vite build）→ `h5`（nginx 托管 dist 并把 `/api` 反代到 mock）→ `mock`（零依赖 Node）。
+- `nginx.conf`：`/api/` → `http://mock:8787`，SPA 路由回退 `index.html`；compose 内 mock 带 `/health` 健康检查，H5 等其就绪后启动。
+- 拆开跑：`docker compose up --build mock`（仅 API）或 `--build h5`（仅前端）。
+- 本机验证状态见 [VERIFICATION.md](./VERIFICATION.md) 第 6 节（本机无 Docker，文件写就绪、由客户环境执行 `docker compose up` 验证）。
+
+### 方式 B：本机 dev 启动（无需 Docker）
 
 > WorkBuddy 注入的 `NODE_OPTIONS` 会让 npm 批量删除失败，所有 npm 命令前置 `env -u NODE_OPTIONS`。
 
@@ -49,7 +60,7 @@ env -u NODE_OPTIONS npm run evidence     # 采集 mock health + evidence 文件�
 
 | AC | 实现位置 | 验证 |
 |---|---|---|
-| AC0 可运行交付 + 启动说明 | `package.json` / `vite.config.ts` / `mock/server.mjs` | `npm run dev:all`、`npm run build` |
+| AC0 可运行交付 + 启动说明 | `package.json` / `Dockerfile` / `docker-compose.yml` / `vite.config.ts` / `mock/server.mjs` | `docker compose up --build`（客户环境）、`npm run dev:all`、`npm run build` |
 | AC1 一条命令起全流程 | `src/App.tsx` + 各 `src/pages/*` + `mock/server.mjs` | `e2e/flow.spec.ts` |
 | AC2 同意门禁/拒绝出口/版本+时间戳 | `src/pages/Consent.tsx`、`src/config/consent.ts` | `tests/consent.test.tsx`、`e2e/consent.spec.ts` |
 | AC3 AI 标识每屏 | `src/components/AiBadge.tsx`（根布局唯一实例） | `e2e/aibadge.spec.ts`（六路由参数化） |
@@ -78,7 +89,20 @@ env -u NODE_OPTIONS npm run evidence     # 采集 mock health + evidence 文件�
 - `consent_at` 用 `new Date().toISOString()`（UTC）；版本号写死常量 `v1.0-20261119`。
 - 150% 字号：`meta viewport` 未锁 `maximum-scale`；容器 `max-width:100%`、`box-sizing:border-box`、按钮 `min-height:44px`、`height:auto`、`overflow-wrap:anywhere`；含 iOS 安全区 `env(safe-area-inset-*)`。
 
-## 6. 目录结构
+## 6. Taro 同源出小程序（加分项 · 状态说明）
+
+需求第 7 项「用 Taro 同源代码出微信小程序」为**加分项，本仓暂未包含小程序构建产物**（如实标注），但源代码已按同源路径预留，迁移成本低：
+
+- **可直接复用**：`src/state/store.ts`（纯 TS，无 DOM 依赖）、`src/config/consent.ts`、`src/api/client.ts`（把 `fetch` 换成 `Taro.request`，URL 逻辑不变）、全部 mock 接口。
+- **需适配层替换**：
+  - 页面路由：`src/App.tsx` 的 history 路由 → Taro `Taro.navigateTo`，六个页面（Entry/Consent/Chat/Stations/Booking/Result + Privacy）各转一个 Taro page；
+  - 组件：`components/*` 为无状态 JSX，可平移；`localStorage/sessionStorage/cookie/IndexedDB/Cache API` 六存储面清理 → `Taro.clearStorage()` + 内存 state 重置；
+  - 语音输入与 `setOffline` 断网模拟 → `Taro.getRecorderManager` 与 `Taro.onNetworkStatusChange`；
+  - AI 标识 `AiBadge` 为全局组件，小程序端放自定义 tabBar 上方或页面级固定条。
+- **迁移路径**：`npm i @tarojs/cli` → `taro convert` 或新建 Taro 项目后将 `src/` 平移进 `src/pages/*`，共享逻辑抽 `src/shared/`；一条命令 `npm run build:weapp` 出小程序包。
+- 小程序认证与上架由发单方负责（需求「明确不含」），后续中标可按上述路径交付小程序包。
+
+## 7. 目录结构
 
 ```
 task2-h5/
@@ -89,14 +113,16 @@ task2-h5/
 ├─ tests/{consent,clearAllLocal,persist,mock-state}.test.*
 ├─ e2e/{flow,consent,aibadge,privacy,viewport,offline}.spec.ts + helpers.ts
 ├─ scripts/collect-evidence.mjs
+├─ Dockerfile（build/h5/mock 三 target）+ docker-compose.yml + nginx.conf + .dockerignore
 ├─ evidence/（真实运行输出与截图）
 └─ VERIFICATION.md
 ```
 
-## 7. 边界（诚实标注）
+## 8. 边界（诚实标注）
 
 **本机已验证**：构建、20 项 Vitest 单测、8 项 Playwright E2E（系统 Chrome 驱动）、三宽度/150% 字号浏览器断言、mock 契约。
 
-**需客户/集成环境**：Task 1 真实 Agent 引擎与政策知识库召回、Task 3 真实并发预约与名额扣减、Task 5 真实保险箱加解密与审计；
+**需客户/集成环境**：docker compose 一键启动（本机无 Docker，文件写就绪，见 VERIFICATION.md 第 6 节）；
+Task 1 真实 Agent 引擎与政策知识库召回、Task 3 真实并发预约与名额扣减、Task 5 真实保险箱加解密与审计；
 真实短信/电话外呼与站长虚拟号；iOS/Android 真机与现网 4G 首屏指标（本机用 Chrome DevTools + 断言替代，未跑 Lighthouse 真机报告）；
-Taro 同源小程序为加分项，本仓未包含，认证与上架由发单方负责。E2E 未跑 WebKit/iOS 模拟器。
+Taro 同源小程序为加分项，本仓未包含构建产物（迁移路径见第 6 节），认证与上架由发单方负责。E2E 未跑 WebKit/iOS 模拟器。

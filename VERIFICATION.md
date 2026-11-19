@@ -140,3 +140,40 @@ evidence files:
 - 本仓 E2E 未跑 WebKit/Safari 项目。
 
 数据合规：全部为合成数据；依赖 React / Vite / Vitest / Playwright / @testing-library / concurrently 均为 MIT，无 GPL/AGPL。
+
+## 6. Docker Compose 交付件（写就绪 · 本机无 Docker 未运行 · 需客户环境验证）
+
+**如实标注：本机（Windows 10 Pro）无 Docker（`docker --version` 不存在），以下 compose 栈未在本机实际运行。**
+Docker 交付件补齐后已重跑全量本机验证，结果与第 1 节一致：`env -u NODE_OPTIONS npm run verify` →
+build 通过、Vitest **20 passed (20)**、Playwright **8 passed (41.4s)**（留痕追加于 `evidence/verify.txt` 末尾）。
+
+### 6.1 新增文件
+
+| 文件 | 作用 |
+|---|---|
+| `Dockerfile` | 单文件三 target：`build`（node:22-alpine，npm ci + tsc/vite build）→ `h5`（nginx:alpine 托管 dist）→ `mock`（node:22-alpine，零依赖 Node mock，含 `/health` HEALTHCHECK） |
+| `docker-compose.yml` | 两服务：`mock`(8787) + `h5`(5173→80)，h5 依赖 mock 健康检查通过后启动 |
+| `nginx.conf` | `/api/` 反代 `http://mock:8787`（契约前缀原样透传）；SPA 路由回退 `index.html`；带 hash 静态资源 7 天缓存 |
+| `.dockerignore` | 排除 node_modules / dist / test-results / playwright-report / evidence / .git |
+
+### 6.2 为容器化做的代码改动（已随重跑验证）
+
+- `mock/server.mjs`：监听地址改为 `process.env.MOCK_HOST || '127.0.0.1'`（容器内传 `0.0.0.0` 才能被 nginx 反代访问）；
+  该改动不影响本机 dev/E2E 行为，重跑结果一致。
+- H5 API 客户端本就走相对路径 `/api/v1`（`src/api/client.ts:8`），nginx 反代无需改前端代码。
+
+### 6.3 客户环境验证步骤（建议）
+
+```bash
+docker compose up --build
+curl -s http://127.0.0.1:8787/health          # 期望 {"status":"ok"}
+curl -s http://127.0.0.1:5173/                # 期望 200，HTML 含 #root
+curl -s http://127.0.0.1:5173/api/v1/stations # 期望经 nginx 反代返回站点 JSON
+# 浏览器打开 http://127.0.0.1:5173/?source_channel=poster_cityA 走完整全流程
+```
+
+### 6.4 风险点（诚实说明）
+
+- compose 内服务名 `mock` 依赖 Docker 内置 DNS，属标准用法，但未经本机实测；
+- nginx:alpine 与 node:22-alpine 镜像版本漂移可能带来差异；`npm ci` 在容器内重新解析 lock，理论可复现；
+- 若客户环境端口 5173/8787 被占用，改 `docker-compose.yml` 端口映射左侧即可。

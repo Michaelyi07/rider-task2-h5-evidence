@@ -1,0 +1,27 @@
+# ClawHunt Task 2/5 — 一键启动 H5（nginx 静态服务）+ 契约 mock API
+# 用法：docker compose up --build
+#   H5:   http://127.0.0.1:5173/?source_channel=poster_cityA
+#   Mock: http://127.0.0.1:8787/health
+# 全部为合成数据；接口契约见 README「契约对齐」。
+
+services:
+  mock:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: mock
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+
+  h5:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: h5
+    ports:
+      - "5173:80"
+    depends_on:
+      mock:
+        condition: service_healthy
+    restart: unless-stopped
