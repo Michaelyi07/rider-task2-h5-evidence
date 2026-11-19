@@ -1,0 +1,14 @@
+collected_at=2026-11-19T08:34:32.186Z
+GET http://127.0.0.1:8787/health -> HTTP 200 {"status":"ok"}
+
+evidence files:
+  - offline-after.png
+  - playwright-report
+  - playwright.txt
+  - shot-150font.png
+  - shot-375.png
+  - shot-390.png
+  - shot-414.png
+  - verify.txt
+
+注：仅在 mock 服务运行时 curl/health 才可达；本脚本不对输出做任何加工。
